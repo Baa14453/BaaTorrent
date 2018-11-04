@@ -5,10 +5,33 @@ import os
 import ffmpeg
 import feedparser
 import urllib.request
+import configparser
 
-rss_feed = sys.argv[1]
+config = sys.argv[1]
 
 location = sys.argv[2]
+
+#Used for reading the RSS Feeds list
+def import_config(config_file_name):
+    config = configparser.RawConfigParser()
+
+    config.read(config_file_name)
+
+    rss_feeds = config['rss-feeds']
+    latest_names = config['latest-name']
+
+    #Return both headers inside the config file as a dictionary
+    return rss_feeds, latest_names
+
+#Used for saving details of last RSS feed used.
+def write_config(config_file_name, key, value):
+    config = configparser.RawConfigParser()
+    config.read(config_file_name)
+
+    config['latest-name'][str(key)] = str(value)
+
+    with open(str(config_file_name), 'w') as config_file:
+        config.write(config_file)
 
 #Used for downloading .torrent files
 def download_file(url):
@@ -28,6 +51,7 @@ def download_torrent(torrent_sauce, save_location):
     #Start a session
     session = libtorrent.session({'listen_interfaces': '0.0.0.0:6881'})
 
+    #Check if we are dealing with a torrent file or a magnet link
     if os.path.splitext(str(torrent_sauce))[1] == '.torrent':
         #Parse torrent file parameters
         torrent_info = libtorrent.torrent_info(download_file(torrent_sauce))
@@ -77,15 +101,26 @@ def convert_video(file_path):
     #Get to work
     ffmpeg.run(stream)
 
-def episode_parser(rss_feed, location):
-    #Process the RSS feed and retrieve the URL of the latest result.
-    rss_result = feed_parser(rss_feed)
+def episode_parser(config_file_name, location):
 
-    #Download the torrent and save it to location.
-    torrent = download_torrent(rss_result, location)
+    config = import_config(config_file_name)
 
-    #Convert the downloaded torrent to hardsubs
-    convert_video(torrent)
+    while True:
+        for a in config[0]:
+            #Process the RSS feed and retrieve the URL of the latest result.
+            rss_result = feed_parser(str(config[0][str(a)]))
+            if rss_result != (config[1][a]):
 
-episode_parser(rss_feed, location)
+                #Download the torrent and save it to location.
+                torrent = download_torrent(rss_result, location)
+                #Save latest episode name
+                write_config(config_file_name, a, rss_result)
+
+                #Convert the downloaded torrent to hardsubs
+                #convert_video(torrent)
+            else:
+                print(f'has not had a new release yet.')
+        time.sleep(10)
+
+episode_parser(config, location)
 #convert_video(download_torrent(magnet_to_torrent(feed_parser(rss_feed), location)[0],location))
