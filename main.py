@@ -6,6 +6,7 @@ import ffmpeg
 import feedparser
 import urllib.request
 import configparser
+from subprocess import call
 
 config = sys.argv[1]
 
@@ -19,9 +20,10 @@ def import_config(config_file_name):
 
     rss_feeds = config['rss-feeds']
     latest_names = config['latest-name']
+    svp = config['svp']
 
     #Return both headers inside the config file as a dictionary
-    return rss_feeds, latest_names
+    return rss_feeds, latest_names, svp
 
 #Used for saving details of last RSS feed used.
 def write_config(config_file_name, key, value):
@@ -47,18 +49,19 @@ def feed_parser(rss_feed):
 
     return(d.entries[0].link)
 
-def download_torrent(torrent_sauce, save_location):
+def download_torrent(torrent_source, save_location, output_file_name):
     #Start a session
     session = libtorrent.session({'listen_interfaces': '0.0.0.0:6881'})
 
     #Check if we are dealing with a torrent file or a magnet link
-    if os.path.splitext(str(torrent_sauce))[1] == '.torrent':
+    if os.path.splitext(str(torrent_source))[1] == '.torrent':
         #Parse torrent file parameters
-        torrent_info = libtorrent.torrent_info(download_file(torrent_sauce))
+        torrent_info = libtorrent.torrent_info(download_file(torrent_source))
         torrent_in_progress = session.add_torrent({'ti': torrent_info, 'save_path': save_location})
+        os.remove(torrent_source)
     else:
         #Parse magnet URI parameters
-        torrent_info = libtorrent.parse_magnet_uri(torrent_sauce).get('info_hash')
+        torrent_info = libtorrent.parse_magnet_uri(torrent_source).get('info_hash')
         torrent_in_progress = session.add_torrent({'info_hash': torrent_info, 'save_path': save_location})
 
     print('starting', torrent_in_progress.name())
@@ -77,29 +80,37 @@ def download_torrent(torrent_sauce, save_location):
 
     sys.stdout.flush()
 
-    time.sleep(1)
+    #time.sleep(1)
+
+    #TODO test files with more than one . in the name
+    output_file_name += str(os.path.splitext(str(torrent_in_progress.name()))[1])
+    os.rename(torrent_in_progress.name(), output_file_name)
 
     print(torrent_in_progress.name(), 'complete')
-    return torrent_in_progress.name()
 
-def convert_video(file_path):
+    return output_file_name, torrent_in_progress.name()
+
+def svp(temp_file_path, true_file_path):
     #Split file name
-    file_path_tuple = os.path.splitext(str(file_path))
+    true_file_path = os.path.splitext(str(true_file_path))
+    final_file_path = true_file_path[0] + 'svp' + true_file_path[1]
 
-    #Create a stream
-    stream = ffmpeg.input(file_path)
+    cmd = [f'vspipe svp.py -a file="{temp_file_path}" - --y4m | ffmpeg -i - -i "{temp_file_path}" -acodec copy -filter_complex "subtitles=\'{temp_file_path}\'"  "{final_file_path}" -y']
+    call(cmd, shell=True)
 
-    #Apply subtitle filter
-    stream = ffmpeg.filter_(stream,'subtitles',str(file_path))
+    os.remove(temp_file_path)
+    return final_file_path
 
-    #Remap audio :/
-    stream = ffmpeg.output(stream, file_path_tuple[0] + '2' + file_path_tuple[1], map='0:1')
+def hardsub(temp_file_path, true_file_path):
+    #Split file name
+    true_file_path = os.path.splitext(true_file_path)
+    final_file_path = 'videos/' + true_file_path[0] + 'hardsubs' + true_file_path[1]
 
-    #Ovewrite the file if it's there
-    stream = ffmpeg.overwrite_output(stream)
+    cmd = [f'ffmpeg -i "{temp_file_path}" -filter_complex "subtitles=\'{temp_file_path}\'"  "{final_file_path}" -y']
+    call(cmd, shell=True)
 
-    #Get to work
-    ffmpeg.run(stream)
+    os.remove(temp_file_path)
+    return final_file_path
 
 def episode_parser(config_file_name, location):
 
@@ -112,15 +123,20 @@ def episode_parser(config_file_name, location):
             if rss_result != (config[1][a]):
 
                 #Download the torrent and save it to location.
-                torrent = download_torrent(rss_result, location)
+                torrent = download_torrent(rss_result, location, a)
                 #Save latest episode name
+
                 write_config(config_file_name, a, rss_result)
 
-                #Convert the downloaded torrent to hardsubs
-                #convert_video(torrent)
+                if config[2][a] == 'True':
+                    #Interpolate
+                    svp(torrent[0], torrent[1])
+                else:
+                    #Convert the downloaded torrent to hardsubs
+                    hardsub(torrent[0], torrent[1])
+
             else:
                 print(f'has not had a new release yet.')
         time.sleep(10)
 
 episode_parser(config, location)
-#convert_video(download_torrent(magnet_to_torrent(feed_parser(rss_feed), location)[0],location))

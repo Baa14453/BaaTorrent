@@ -1,0 +1,8 @@
+sudo apt install vapoursynth
+sudo apt install python3-libtorrent
+
+python:
+pip3 install vapoursynth
+pip3 install ffmpeg-python
+pip3 install feedparser
+pip3 install configparser
