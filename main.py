@@ -46,7 +46,7 @@ def feed_parser(rss_feed):
 
     d = feedparser.parse(rss_feed)
 
-    return(d.entries[0].link)
+    return(d.entries[0].link, d.entries[0].title)
 
 def download_torrent(torrent_source, save_location, output_file_name):
     #Start a session
@@ -120,13 +120,13 @@ def episode_parser(config_file_name, location):
         for a in config[0]:
             #Process the RSS feed and retrieve the URL of the latest result.
             rss_result = feed_parser(str(config[0][str(a)]))
-            if rss_result != (config[1][a]):
+            if rss_result[0] != (config[1][a]):
 
                 #Download the torrent and save it to location.
-                torrent = download_torrent(rss_result, location, a)
+                torrent = download_torrent(rss_result[0], location, a)
                 #Save latest episode name
 
-                write_config(config_file_name, a, rss_result)
+                write_config(config_file_name, a, rss_result[0])
 
                 if config[2][a] == 'True':
                     #Interpolate
@@ -136,7 +136,8 @@ def episode_parser(config_file_name, location):
                     hardsub(torrent[0], torrent[1])
 
             else:
-                print(f'has not had a new release yet.')
+                print(f'{rss_result[1]} is the latest release.')
         time.sleep(10)
+        config = import_config(config_file_name)
 
 episode_parser(config, location)
