@@ -2,7 +2,6 @@ import libtorrent
 import time
 import sys
 import os
-import ffmpeg
 import feedparser
 import urllib.request
 import configparser
@@ -56,9 +55,10 @@ def download_torrent(torrent_source, save_location, output_file_name):
     #Check if we are dealing with a torrent file or a magnet link
     if os.path.splitext(str(torrent_source))[1] == '.torrent':
         #Parse torrent file parameters
-        torrent_info = libtorrent.torrent_info(download_file(torrent_source))
+        torrent_file = download_file(torrent_source)
+        torrent_info = libtorrent.torrent_info(torrent_file)
         torrent_in_progress = session.add_torrent({'ti': torrent_info, 'save_path': save_location})
-        os.remove(torrent_source)
+        os.remove(torrent_file)
     else:
         #Parse magnet URI parameters
         torrent_info = libtorrent.parse_magnet_uri(torrent_source).get('info_hash')
