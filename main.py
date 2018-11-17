@@ -6,6 +6,7 @@ from feedparser import parse
 from subprocess import call
 import urllib.request
 import libtorrent
+import logging
 
 #Used for reading the RSS Feeds list
 def import_config(config_file_name):
@@ -25,7 +26,7 @@ def import_config(config_file_name):
         print(f"ERROR Config file '{config_file_name}' could not be accessed.")
         exit()
     except KeyError as Argument:
-        print(f'ERROR While parsing config header \'{Argument}\'.')
+        print(f'ERROR While parsing config header {Argument}.')
         exit()
     except IndexError:
         print(f'ERROR No RSS feeds found in \'{config_file_name}\'.')
@@ -114,7 +115,7 @@ def download_torrent(torrent_source, save_location, output_file_name):
     output_file_name += str(path.splitext(str(
                         torrent_in_progress.name()))[1])
 
-    #rename(torrent_in_progress.name(), output_file_name)
+    rename(torrent_in_progress.name(), output_file_name)
 
     print("\n" + torrent_in_progress.name(), '- Download complete.')
 
@@ -185,6 +186,7 @@ def episode_parser(config_file_name, location):
 
             else:
                 print(f'{rss_result[1]} is the latest release.')
+                logging.info(f'{rss_result[1]} is the latest release.')
         #Wait 10 minutes
         sleep(600)
         #Redfine config so it can be checked again.
