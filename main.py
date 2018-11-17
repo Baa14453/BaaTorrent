@@ -107,7 +107,7 @@ def download_torrent(torrent_source, save_location, output_file_name):
         alerts = session.pop_alerts()
         for a in alerts:
             if a.category() & libtorrent.alert.category_t.error_notification:
-                print("\n" + a)
+                print("\n" + str(a))
 
     stdout.flush()
 
