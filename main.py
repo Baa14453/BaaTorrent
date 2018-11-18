@@ -123,11 +123,11 @@ def download_torrent(torrent_source, save_location, output_file_name):
     return output_file_name, torrent_in_progress.name()
 
 #Interpolate the video to 60FPS and apply hardsubs
-def svp(temp_file_path, true_file_path):
+def svp(temp_file_path, true_file_path, location):
     print('\nStarting  interpolation:')
     #Split file name
     true_file_path = path.splitext(str(true_file_path))
-    final_file_path = true_file_path[0] + 'svp' + true_file_path[1]
+    final_file_path = location + '/' + true_file_path[0] + 'svp' + true_file_path[1]
 
     cmd = [f'vspipe svp.py -a file="{temp_file_path}" - --y4m |\
            ffmpeg -i - -i "{temp_file_path}" -acodec copy \
@@ -141,11 +141,11 @@ def svp(temp_file_path, true_file_path):
     return final_file_path
 
 #Re-encode the video to apply hardsubs
-def hardsub(temp_file_path, true_file_path):
+def hardsub(temp_file_path, true_file_path, location):
     print('\nApplying hardsubs:')
     #Split file name
     true_file_path = path.splitext(true_file_path)
-    final_file_path = true_file_path[0] + 'hardsubs' + true_file_path[1]
+    final_file_path = location + '/' + true_file_path[0] + 'hardsubs' + true_file_path[1]
 
     cmd = [f'ffmpeg -i "{temp_file_path}" \
            -filter_complex "subtitles=\'{temp_file_path}\'" \
@@ -179,10 +179,10 @@ def episode_parser(config_file_name, location):
                 #Check if the current iteration has SVP set to True or not.
                 if config[2][config_id] == 'True':
                     #Interpolate
-                    svp(torrent[0], torrent[1])
+                    svp(torrent[0], torrent[1], location)
                 else:
                     #Convert the downloaded torrent to hardsubs
-                    hardsub(torrent[0], torrent[1])
+                    hardsub(torrent[0], torrent[1], location)
 
             else:
                 print(f'{rss_result[1]} is the latest release.')
