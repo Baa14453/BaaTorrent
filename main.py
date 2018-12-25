@@ -115,12 +115,12 @@ def download_torrent(torrent_source, save_location, output_file_name):
     output_file_name += str(path.splitext(str(
                         torrent_in_progress.name()))[1])
 
-    rename(save_location + '/' + torrent_in_progress.name(), output_file_name)
+    rename(save_location + '/' + torrent_in_progress.name(), save_location + '/' + output_file_name)
 
     print("\n" + torrent_in_progress.name(), '- Download complete.')
 
     #return output_file_name, torrent_in_progress.name()
-    return output_file_name, torrent_in_progress.name()
+    return save_location + '/' + output_file_name, torrent_in_progress.name()
 
 #Interpolate the video to 60FPS and apply hardsubs
 def svp(temp_file_path, true_file_path, location):
@@ -138,6 +138,8 @@ def svp(temp_file_path, true_file_path, location):
     print('Interpolation complete.')
 
     remove(temp_file_path)
+    remove(temp_file_path + '.ffindex')
+
     return final_file_path
 
 #Re-encode the video to apply hardsubs
@@ -155,6 +157,8 @@ def hardsub(temp_file_path, true_file_path, location):
     print('Hardsub rendering complete.')
 
     remove(temp_file_path)
+    remove(temp_file_path + '.ffindex')
+
     return final_file_path
 
 #Main function
