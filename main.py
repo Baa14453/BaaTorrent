@@ -23,13 +23,13 @@ def import_config(config_file_name):
         #Check for the first value in 'rss-feeds'.
         list(config['rss-feeds'])[0]
     except IOError:
-        print(f"ERROR Config file '{config_file_name}' could not be accessed.")
+        logging.error(f"Config file '{config_file_name}' could not be accessed.")
         exit()
     except KeyError as Argument:
-        print(f'ERROR While parsing config header {Argument}.')
+        logging.error(f'While parsing config header {Argument}.')
         exit()
     except IndexError:
-        print(f'ERROR No RSS feeds found in \'{config_file_name}\'.')
+        logging.error(f'No RSS feeds found in \'{config_file_name}\'.')
         exit()
 
     try:
@@ -38,7 +38,7 @@ def import_config(config_file_name):
                 if header != 'DEFAULT':
                     config[header][key]
     except KeyError as Argument:
-        print(f'ERROR while parsing config key {Argument} for b \'{header}\'')
+        logging.error(f'while parsing config key {Argument} for b \'{header}\'')
         exit()
 
     #Return all headers inside the config file as a dictionary
@@ -70,7 +70,7 @@ def feed_parser(rss_feed):
     try:
         return(d.entries[0].link, d.entries[0].title)
     except IndexError as e:
-        print(f'ERROR while parsing RSS feed \'{rss_feed}\'.')
+        logging.error(f'while parsing RSS feed \'{rss_feed}\'.')
         exit()
 
 #Processes a torrent downloading it and returning the output file's location.
@@ -96,18 +96,18 @@ def download_torrent(torrent_source, save_location, output_file_name):
                                                 'save_path': save_location
                                                 })
 
-    print('\nStarting download:', torrent_in_progress.name())
+    logging.info('\nStarting download:', torrent_in_progress.name())
 
     while (not torrent_in_progress.is_seed()):
         status = torrent_in_progress.status()
 
-        print('\r%.2f%% complete. (Speed: %.1f kB/s)' % \
+        logging.info('\r%.2f%% complete. (Speed: %.1f kB/s)' % \
         (status.progress * 100, status.download_rate / 1000), end=' ')
 
         alerts = session.pop_alerts()
         for a in alerts:
             if a.category() & libtorrent.alert.category_t.error_notification:
-                print("\n" + str(a))
+                logging.error("\n" + str(a))
 
     stdout.flush()
 
@@ -117,14 +117,14 @@ def download_torrent(torrent_source, save_location, output_file_name):
 
     rename(save_location + '/' + torrent_in_progress.name(), save_location + '/' + output_file_name)
 
-    print("\n" + torrent_in_progress.name(), '- Download complete.')
+    logging.info("\n" + torrent_in_progress.name(), '- Download complete.')
 
     #return output_file_name, torrent_in_progress.name()
     return save_location + '/' + output_file_name, torrent_in_progress.name()
 
 #Interpolate the video to 60FPS and apply hardsubs
 def svp(temp_file_path, true_file_path, location):
-    print('\nStarting  interpolation:')
+    logging.info('\nStarting  interpolation:')
     #Split file name
     true_file_path = path.splitext(str(true_file_path))
     final_file_path = location + '/' + true_file_path[0] + 'svp' + true_file_path[1]
@@ -135,7 +135,7 @@ def svp(temp_file_path, true_file_path, location):
            "{final_file_path}" -y -loglevel warning -stats']
 
     call(cmd, shell=True)
-    print('Interpolation complete.')
+    logging.info('Interpolation complete.')
 
     remove(temp_file_path)
     remove(temp_file_path + '.ffindex')
@@ -144,7 +144,7 @@ def svp(temp_file_path, true_file_path, location):
 
 #Re-encode the video to apply hardsubs
 def hardsub(temp_file_path, true_file_path, location):
-    print('\nApplying hardsubs:')
+    logging.info('\nApplying hardsubs:')
     #Split file name
     true_file_path = path.splitext(true_file_path)
     final_file_path = location + '/' + true_file_path[0] + 'hardsubs' + true_file_path[1]
@@ -154,7 +154,7 @@ def hardsub(temp_file_path, true_file_path, location):
            "{final_file_path}" -y -loglevel warning -stats']
 
     call(cmd, shell=True)
-    print('Hardsub rendering complete.')
+    logging.info('Hardsub rendering complete.')
 
     remove(temp_file_path)
     remove(temp_file_path + '.ffindex')
@@ -170,47 +170,47 @@ def episode_parser(config_file_name, location):
         for config_id in config[0]:
             #Process the RSS feed and retrieve the URL of the latest result.
             rss_result = feed_parser(str(config[0][str(config_id)]))
+            #If latest rss result does not equal saved result...
             if rss_result[0] != (config[1][config_id]):
 
                 #Download the torrent and save it to location under the name of
                 #it's config number.
                 torrent = download_torrent(rss_result[0], location, config_id)
 
-                #Call write_config to save the latest RSS link, this is used to
-                #check if the rss feed has had a new release.
-                write_config(config_file_name, config_id, rss_result[0])
-
                 #Check if the current iteration has SVP set to True or not.
                 if config[2][config_id] == 'True':
                     #Interpolate
                     svp(torrent[0], torrent[1], location)
                 else:
-                    #Convert the downloaded torrent to hardsubs
+                    #Convert the downloaded torrent to hardsubs.
                     hardsub(torrent[0], torrent[1], location)
 
+                #The process is completed, save larest RSS link to config.
+                write_config(config_file_name, config_id, rss_result[0])
+
             else:
-                print(f'{rss_result[1]} is the latest release.')
                 logging.info(f'{rss_result[1]} is the latest release.')
         #Wait 10 minutes
         sleep(600)
-        #Redfine config so it can be checked again.
+        #Redefine config so it can be checked again.
         config = import_config(config_file_name)
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     #Gather run arguments
     try:
         config = str(argv[1])
     except IndexError:
-        print('Default path \'rss.txt\' in use.')
+        logging.info('Default path \'rss.txt\' in use.')
         config = 'rss.ini'
     try:
         location = str(argv[2])
     except IndexError:
-        print('Default save location \'.\' in use.')
+        logging.info('Default save location \'.\' in use.')
         location = '.'
 
     #Run main function
     try:
         episode_parser(config, location)
     except KeyboardInterrupt:
-        print("\nProgram terminated by user.")
+        logging.debug("\nProgram terminated by user.")
