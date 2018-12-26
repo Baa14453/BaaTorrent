@@ -96,12 +96,12 @@ def download_torrent(torrent_source, save_location, output_file_name):
                                                 'save_path': save_location
                                                 })
 
-    logging.info('\nStarting download:', torrent_in_progress.name())
+    print('\nStarting download:', torrent_in_progress.name())
 
     while (not torrent_in_progress.is_seed()):
         status = torrent_in_progress.status()
 
-        logging.info('\r%.2f%% complete. (Speed: %.1f kB/s)' % \
+        print('\r%.2f%% complete. (Speed: %.1f kB/s)' % \
         (status.progress * 100, status.download_rate / 1000), end=' ')
 
         alerts = session.pop_alerts()
@@ -117,14 +117,14 @@ def download_torrent(torrent_source, save_location, output_file_name):
 
     rename(save_location + '/' + torrent_in_progress.name(), save_location + '/' + output_file_name)
 
-    logging.info("\n" + torrent_in_progress.name(), '- Download complete.')
+    print("\n" + torrent_in_progress.name(), '- Download complete.')
 
     #return output_file_name, torrent_in_progress.name()
     return save_location + '/' + output_file_name, torrent_in_progress.name()
 
 #Interpolate the video to 60FPS and apply hardsubs
 def svp(temp_file_path, true_file_path, location):
-    logging.info('\nStarting  interpolation:')
+    print('\nStarting  interpolation:')
     #Split file name
     true_file_path = path.splitext(str(true_file_path))
     final_file_path = location + '/' + true_file_path[0] + 'svp' + true_file_path[1]
@@ -135,7 +135,7 @@ def svp(temp_file_path, true_file_path, location):
            "{final_file_path}" -y -loglevel warning -stats']
 
     call(cmd, shell=True)
-    logging.info('Interpolation complete.')
+    print('Interpolation complete.')
 
     remove(temp_file_path)
     remove(temp_file_path + '.ffindex')
@@ -144,7 +144,7 @@ def svp(temp_file_path, true_file_path, location):
 
 #Re-encode the video to apply hardsubs
 def hardsub(temp_file_path, true_file_path, location):
-    logging.info('\nApplying hardsubs:')
+    print('\nApplying hardsubs:')
     #Split file name
     true_file_path = path.splitext(true_file_path)
     final_file_path = location + '/' + true_file_path[0] + 'hardsubs' + true_file_path[1]
@@ -154,7 +154,7 @@ def hardsub(temp_file_path, true_file_path, location):
            "{final_file_path}" -y -loglevel warning -stats']
 
     call(cmd, shell=True)
-    logging.info('Hardsub rendering complete.')
+    print('Hardsub rendering complete.')
 
     remove(temp_file_path)
     remove(temp_file_path + '.ffindex')
@@ -189,14 +189,14 @@ def episode_parser(config_file_name, location):
                 write_config(config_file_name, config_id, rss_result[0])
 
             else:
-                logging.info(f'{rss_result[1]} is the latest release.')
+                print(f'{rss_result[1]} is the latest release.')
         #Wait 10 minutes
         sleep(600)
         #Redefine config so it can be checked again.
         config = import_config(config_file_name)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.ERROR)
     #Gather run arguments
     try:
         config = str(argv[1])
