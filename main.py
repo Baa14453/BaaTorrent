@@ -1,7 +1,8 @@
 from time import sleep
 from sys import argv, stdout, exit
 from os import path, remove, rename
-from configparser import RawConfigParser
+from configparser import RawConfigParser, DuplicateOptionError
+import configparser
 from feedparser import parse
 from subprocess import call
 import urllib.request
@@ -10,9 +11,14 @@ import logging
 
 #Used for reading the RSS Feeds list
 def import_config(config_file_name):
-    config = RawConfigParser()
+    config = configparser.RawConfigParser()
 
-    config.read(config_file_name)
+    try:
+        config.read(config_file_name)
+    except DuplicateOptionError as e:
+        logging.error(e)
+        #logging.debug('',exc_info=1)
+        exit()
 
     #Test config is imported correctly.
     try:
@@ -24,32 +30,47 @@ def import_config(config_file_name):
         list(config['rss-feeds'])[0]
     except IOError:
         logging.error(f"Config file '{config_file_name}' could not be accessed.")
+        logging.debug('',exc_info=1)
         exit()
     except KeyError as Argument:
         logging.error(f'While parsing config header {Argument}.')
+        logging.debug('',exc_info=1)
         exit()
     except IndexError:
         logging.error(f'No RSS feeds found in \'{config_file_name}\'.')
+        logging.debug('',exc_info=1)
         exit()
 
+    #Check all keys in config are present.
     try:
         for key in config['rss-feeds']:
             for header in config:
+                #Ignore DEFAULT header.
                 if header != 'DEFAULT':
+                    logging.debug(f'Checking config \'{config_file_name}\' key \'{key}\' in header \'{header}\'.')
                     config[header][key]
+                    logging.debug(f'\'{config_file_name}\' \'{header}\' \'{key}\' is OK.')
     except KeyError as Argument:
-        logging.error(f'while parsing config key {Argument} for b \'{header}\'')
-        exit()
+        logging.debug(f'Missing key for \'{header}\', attempting to fix.')
+        logging.debug('',exc_info=1)
+        write_config(config_file_name, header, key, '')
+        try:
+            logging.debug(f'Reloading config \'{config_file_name}\'.')
+            rss_feeds, latest_names, svp = import_config(config_file_name)
+        except exception as e:
+            logging.error(f'While trying to fix key \'{key}\' for header \'{header}\'.')
+            logging.debug('',exc_info=1)
+            exit()
 
     #Return all headers inside the config file as a dictionary
     return rss_feeds, latest_names, svp
 
 #Used for saving details of last RSS feed used.
-def write_config(config_file_name, key, value):
+def write_config(config_file_name, header, key, value):
     config = RawConfigParser()
     config.read(config_file_name)
 
-    config['latest-name'][str(key)] = str(value)
+    config[str(header)][str(key)] = str(value)
 
     with open(str(config_file_name), 'w') as config_file:
         config.write(config_file)
@@ -96,35 +117,32 @@ def download_torrent(torrent_source, save_location, output_file_name):
                                                 'save_path': save_location
                                                 })
 
-    print('\nStarting download:', torrent_in_progress.name())
+    logging.info(f'Starting download: {torrent_in_progress.name()}.')
 
     while (not torrent_in_progress.is_seed()):
         status = torrent_in_progress.status()
 
-        print('\r%.2f%% complete. (Speed: %.1f kB/s)' % \
-        (status.progress * 100, status.download_rate / 1000), end=' ')
+        sleep(1)
+        logging.info('{:.2f}% complete. (Speed: {:.1f} kB/s)'.format(status.progress * 100, status.download_rate / 1000))
 
         alerts = session.pop_alerts()
         for a in alerts:
             if a.category() & libtorrent.alert.category_t.error_notification:
-                logging.error("\n" + str(a))
-
-    stdout.flush()
+                logging.error(f'{str(a)}')
 
     #TODO test files with more than one . in the name
     output_file_name += str(path.splitext(str(
                         torrent_in_progress.name()))[1])
 
-    rename(save_location + '/' + torrent_in_progress.name(), save_location + '/' + output_file_name)
-
-    print("\n" + torrent_in_progress.name(), '- Download complete.')
+    rename(f'{save_location}/{torrent_in_progress.name()}', f'{save_location}/{output_file_name}')
+    logging.info(f'{torrent_in_progress.name()} - Download complete.')
 
     #return output_file_name, torrent_in_progress.name()
-    return save_location + '/' + output_file_name, torrent_in_progress.name()
+    return f'{save_location}/{output_file_name}', f'{torrent_in_progress.name()}'
 
 #Interpolate the video to 60FPS and apply hardsubs
 def svp(temp_file_path, true_file_path, location):
-    print('\nStarting  interpolation:')
+    logging.info('Starting  interpolation:')
     #Split file name
     true_file_path = path.splitext(str(true_file_path))
     final_file_path = location + '/' + true_file_path[0] + 'svp' + true_file_path[1]
@@ -135,16 +153,18 @@ def svp(temp_file_path, true_file_path, location):
            "{final_file_path}" -y -loglevel warning -stats']
 
     call(cmd, shell=True)
-    print('Interpolation complete.')
+    logging.info(f'Interpolation complete.')
 
+    logging.debug(f'Removing file {temp_file_path}.')
     remove(temp_file_path)
+    logging.debug(f'Removing file {temp_file_path}.ffindex.')
     remove(temp_file_path + '.ffindex')
 
     return final_file_path
 
 #Re-encode the video to apply hardsubs
 def hardsub(temp_file_path, true_file_path, location):
-    print('\nApplying hardsubs:')
+    logging.info('Applying hardsubs:')
     #Split file name
     true_file_path = path.splitext(true_file_path)
     final_file_path = location + '/' + true_file_path[0] + 'hardsubs' + true_file_path[1]
@@ -156,8 +176,8 @@ def hardsub(temp_file_path, true_file_path, location):
     call(cmd, shell=True)
     print('Hardsub rendering complete.')
 
+    logging.debug(f'Removing file {temp_file_path}.')
     remove(temp_file_path)
-    remove(temp_file_path + '.ffindex')
 
     return final_file_path
 
@@ -185,8 +205,8 @@ def episode_parser(config_file_name, location):
                     #Convert the downloaded torrent to hardsubs.
                     hardsub(torrent[0], torrent[1], location)
 
-                #The process is completed, save larest RSS link to config.
-                write_config(config_file_name, config_id, rss_result[0])
+                #The process is completed, save latest RSS link to config.
+                write_config(config_file_name, 'latest-name', config_id, rss_result[0])
 
             else:
                 print(f'{rss_result[1]} is the latest release.')
@@ -196,7 +216,8 @@ def episode_parser(config_file_name, location):
         config = import_config(config_file_name)
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.ERROR)
+    #logging.basicConfig(level=logging.INFO)
+    logging.basicConfig(level=logging.DEBUG)
     #Gather run arguments
     try:
         config = str(argv[1])
