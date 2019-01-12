@@ -1,17 +1,17 @@
 from time import sleep
-from sys import argv, stdout, exit
-from os import path, remove, rename
+from sys import argv, stdout, exit, stderr
+from os import path, remove, rename, linesep
 from configparser import RawConfigParser, DuplicateOptionError
-import configparser
 from feedparser import parse
-from subprocess import call
+from subprocess import Popen, CalledProcessError
+import subprocess
 import urllib.request
 import libtorrent
 import logging
 
 #Used for reading the RSS Feeds list
 def import_config(config_file_name):
-    config = configparser.RawConfigParser()
+    config = RawConfigParser()
 
     try:
         config.read(config_file_name)
@@ -164,17 +164,29 @@ def svp(temp_file_path, true_file_path, location):
 
 #Re-encode the video to apply hardsubs
 def hardsub(temp_file_path, true_file_path, location):
-    logging.info('Applying hardsubs:')
     #Split file name
     true_file_path = path.splitext(true_file_path)
     final_file_path = location + '/' + true_file_path[0] + 'hardsubs' + true_file_path[1]
 
-    cmd = [f'ffmpeg -i "{temp_file_path}" \
-           -filter_complex "subtitles=\'{temp_file_path}\'" \
-           "{final_file_path}" -y -loglevel warning -stats']
+    cmd = ['ffmpeg', '-i', f'{temp_file_path}', \
+           '-filter_complex', f'subtitles=\'{temp_file_path}\'', \
+           f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
 
-    call(cmd, shell=True)
-    print('Hardsub rendering complete.')
+    logging.info('Applying hardsubs:')
+    #Start a process, assign it to ffmpeg.
+    ffmpeg = Popen(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    #For each line of stderr (ffmpeg outputs to stderr for some reason).
+    for stderr_line in ffmpeg.stderr:
+        #Log only the last line.
+        logging.info(stderr_line[:-1])
+    #idk looks important though.
+    ffmpeg.stderr.close()
+    return_code = ffmpeg.wait()
+    if return_code:
+        raise CalledProcessError(return_code, cmd)
+
+    logging.info('Hardsub rendering complete.')
 
     logging.debug(f'Removing file {temp_file_path}.')
     remove(temp_file_path)
@@ -225,10 +237,11 @@ if __name__ == "__main__":
         logging.info('Default path \'rss.txt\' in use.')
         config = 'rss.ini'
     try:
-        location = str(argv[2])
+        location = f'{path.abspath(str(argv[2]))}'
+        logging.debug(f'Save location set to \'{path.abspath(str(argv[2]))}\'')
     except IndexError:
-        logging.info('Default save location \'.\' in use.')
-        location = '.'
+        logging.info(f'Default save location \'{path.abspath(path.dirname(argv[0]))}\' in use.')
+        location = f'{path.abspath(path.dirname(str(argv[0])))}'
 
     #Run main function
     try:
