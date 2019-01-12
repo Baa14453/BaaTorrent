@@ -147,14 +147,30 @@ def svp(temp_file_path, true_file_path, location):
     true_file_path = path.splitext(str(true_file_path))
     final_file_path = location + '/' + true_file_path[0] + 'svp' + true_file_path[1]
 
-    cmd = [f'vspipe svp.py -a file="{temp_file_path}" - --y4m |\
-           ffmpeg -i - -i "{temp_file_path}" -acodec copy \
-           -filter_complex "subtitles=\'{temp_file_path}\'" \
-           "{final_file_path}" -y -loglevel warning -stats']
+    vspipe_cmd = ['vspipe', 'svp.py', '-a', f'file={temp_file_path}', '-', '--y4m']
 
-    call(cmd, shell=True)
+    ffmpeg_cmd = ['ffmpeg', '-i', '-', '-i', f'{temp_file_path}', '-acodec', 'copy', \
+           '-filter_complex', f'subtitles=\'{temp_file_path}\'', \
+           f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
+
+    #call(cmd, shell=True)
+
+    #Start a process, assign it to vspipe.
+    vspipe = Popen(vspipe_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    #Start a process, assign it to ffmpeg.
+    ffmpeg = Popen(ffmpeg_cmd, stdin=vspipe.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+    #For each line of stderr (ffmpeg outputs to stderr for some reason).
+    for stderr_line in ffmpeg.stderr:
+        #Log only the last line.
+        logging.info(stderr_line[:-1])
+    #idk looks important though.
+    ffmpeg.stderr.close()
+    return_code = ffmpeg.wait()
+    if return_code:
+        raise CalledProcessError(return_code, cmd)
+
     logging.info(f'Interpolation complete.')
-
     logging.debug(f'Removing file {temp_file_path}.')
     remove(temp_file_path)
     logging.debug(f'Removing file {temp_file_path}.ffindex.')
