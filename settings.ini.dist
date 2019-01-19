@@ -17,9 +17,9 @@ ffmpeg_location = ffmpeg
 #Library locations used for svp
 #Download here https://www.svp-team.com/wiki/Plugins:_SVPflow
 #and here https://github.com/FFMS/ffms2/releases
-ffms2 = ./lib-linux/libffms2.so.4
-svpflow1 = ./lib-linux/libsvpflow1_vs64.so
-svpflow2 = ./lib-linux/libsvpflow2_vs64.so
+ffms2 = ./lib/libffms2.so.4
+svpflow1 = ./lib/libsvpflow1_vs64.so
+svpflow2 = ./lib/libsvpflow2_vs64.so
 
 #Enable debug logging.
 debug = 0
