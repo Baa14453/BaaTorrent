@@ -14,7 +14,7 @@ rss_sleep_time = 600
 #Location of the FFMPEG binary.
 ffmpeg_location = ffmpeg
 
-#Library locations used for svp
+#Library locations used for svp and ffms
 #Download here https://www.svp-team.com/wiki/Plugins:_SVPflow
 #and here https://github.com/FFMS/ffms2/releases
 ffms2 = ./lib/libffms2.so.4
