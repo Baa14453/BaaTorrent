@@ -189,9 +189,17 @@ def feed_parser(rss_feed):
     d = parse(rss_feed)
     try:
         return(d.entries[0].link, d.entries[0].title)
+
+    #Catches empty RSS feeds.
     except IndexError as e:
+        logging.warn(f'\'{rss_feed}\' has no entries or is not an RSS feed.')
+        return
+
+    #Not sure what will trigger this now, maybe broken rss feed?
+    except Exception as e:
         logging.error(f'while parsing RSS feed \'{rss_feed}\'.')
         logging.debug('',exc_info=1)
+        print(e, IndexError)
         exit()
 
 #Processes a torrent downloading it and returning the output file's location.
@@ -323,26 +331,28 @@ def episode_parser(settings_config, location):
         for config_id in settings_config[0]:
             #Process the RSS feed and retrieve the URL of the latest result.
             rss_result = feed_parser(str(settings_config[0][str(config_id)]))
-            #If latest rss result does not equal saved result...
-            if rss_result[0] != (settings_config[1][config_id]):
 
-                #Download the torrent and save it to location under the name of
-                #it's config number.
-                torrent = download_torrent(rss_result[0], location, config_id)
+            if rss_result != None:
+                #If latest rss result does not equal saved result...
+                if rss_result[0] != (settings_config[1][config_id]):
 
-                #Check if the current iteration has SVP set to True or not.
-                if settings_config[2][config_id] == 'True':
-                    #Interpolate
-                    svp(torrent[0], torrent[1], location)
+                    #Download the torrent and save it to location under the name of
+                    #it's config number.
+                    torrent = download_torrent(rss_result[0], location, config_id)
+
+                    #Check if the current iteration has SVP set to True or not.
+                    if settings_config[2][config_id] == 'True':
+                        #Interpolate
+                        svp(torrent[0], torrent[1], location)
+                    else:
+                        #Convert the downloaded torrent to hardsubs.
+                        hardsub(torrent[0], torrent[1], location)
+
+                    #The process is completed, save latest RSS link to settings_config.
+                    write_config(settings_config[3]['settings']['rss_config'], 'latest-name', config_id, rss_result[0])
+
                 else:
-                    #Convert the downloaded torrent to hardsubs.
-                    hardsub(torrent[0], torrent[1], location)
-
-                #The process is completed, save latest RSS link to settings_config.
-                write_config(settings_config[3]['settings']['rss_config'], 'latest-name', config_id, rss_result[0])
-
-            else:
-                print(f'{rss_result[1]} is the latest release.')
+                    print(f'{rss_result[1]} is the latest release.')
         #Wait 10 minutes
         sleep(int(settings_config[3]['settings']['rss_sleep_time']))
         #Redefine config so it can be checked again.
