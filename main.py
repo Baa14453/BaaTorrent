@@ -10,6 +10,7 @@ import urllib.request
 import libtorrent
 import logging
 
+#TODO sanitise all config entries as int() or str()
 #Used for settings.ini
 def import_settings(settings_file_name):
     settings = ConfigParser()
@@ -54,12 +55,9 @@ def import_settings(settings_file_name):
 
     #Set output file location.
     try:
-        #TODO replace location variable with config reference settings['settings']['location'].
-        location = path.abspath(settings['settings']['location'])
         settings['settings']['location'] = path.abspath(settings['settings']['location'])
         logging.debug('Save location set to \'{}\''.format(settings['settings']['location']))
     except IndexError:
-        location = f'{path.abspath(path.dirname(str(argv[0])))}'
         settings['settings']['location'] = path.abspath(path.dirname(str(argv[0])))
         logging.info('Default save location \'{}\' in use.'.format(settings['settings']['location']))
         logging.debug('',exc_info=1)
@@ -129,11 +127,6 @@ def import_settings(settings_file_name):
 
     #Test rss config is imported correctly.
     try:
-        #TODO remove these
-        #rss_feeds = rss_config['rss-feeds']
-        #latest_names = rss_config['latest-name']
-        #svp = rss_config['svp']
-
         #Check for the first value in 'rss-feeds'.
         list(rss['rss-feeds'])[0]
     except KeyError as Argument:
@@ -156,15 +149,11 @@ def import_settings(settings_file_name):
                     logging.debug('\'{}\' \'{}\' \'{}\' is OK.'.format(settings['settings']['rss_config'], header, key))
     except KeyError as Argument:
         logging.debug(f'Missing key for \'{header}\', attempting to fix.')
-        #logging.debug('',exc_info=1)
+        logging.debug('',exc_info=1)
         write_config(settings['settings']['rss_config'], header, key, '')
         try:
             logging.debug('Reloading config \'{}\'.'.format(settings['settings']['rss_config']))
             import_config(config_file_name)
-            #rss_config.read(settings['settings']['rss_config'])
-            #rss_feeds = rss_config['rss-feeds']
-            #latest_names = rss_config['latest-name']
-            #svp = rss_config['svp']
         except Exception as e:
             logging.error(f'While trying to fix key \'{key}\' for header \'{header}\'.')
             logging.debug('',exc_info=1)
@@ -264,19 +253,17 @@ def svp(temp_file_path, true_file_path, location):
     #Split file name
     true_file_path = path.splitext(str(true_file_path))
     final_file_path = location + '/' + true_file_path[0] + 'svp' + true_file_path[1]
-    gpu = settings_config[3]['settings']['gpu']
-    ffms2 = settings_config[3]['settings']['ffms2']
-    svpflow1 = settings_config[3]['settings']['svpflow1']
-    svpflow2 = settings_config[3]['settings']['svpflow2']
-    ffmpeg_binary = settings_config[3]['settings']['ffmpeg_location']
+    gpu = settings[0]['settings']['gpu']
+    ffms2 = settings[0]['settings']['ffms2']
+    svpflow1 = settings[0]['settings']['svpflow1']
+    svpflow2 = settings[0]['settings']['svpflow2']
+    ffmpeg_binary = settings[0]['settings']['ffmpeg_location']
 
     vspipe_cmd = ['vspipe', 'svp.py', '-a', f'file={temp_file_path}', '-a', f'gpu={gpu}', '-a', f'ffms2={ffms2}', '-a', f'svpflow1={svpflow1}', '-a', f'svpflow2={svpflow2}', '-', '--y4m']
 
     ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{temp_file_path}', '-acodec', 'copy', \
            '-filter_complex', f'subtitles=\'{temp_file_path}\'', \
            f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
-
-    #call(cmd, shell=True)
 
     #Start a process, assign it to vspipe.
     vspipe = Popen(vspipe_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -335,42 +322,36 @@ def hardsub(temp_file_path, true_file_path, location):
     return final_file_path
 
 #Main function
-def episode_parser(settings):
+def episode_parser():
 
-    while True:
-        for rss_id in settings[1]['rss-feeds']:
-            #Process the RSS feed and retrieve the URL of the latest result.
-            rss_result = feed_parser(settings[1]['rss-feeds'][rss_id])
+    for rss_id in settings[1]['rss-feeds']:
+        #Process the RSS feed and retrieve the URL of the latest result.
+        rss_result = feed_parser(settings[1]['rss-feeds'][rss_id])
 
-            #Don't break if it's blank.
-            if rss_result != None:
-                #If latest rss result does not equal saved result...
-                if rss_result[0] != (settings[1]['latest-name'][rss_id]):
+        #Don't break if it's blank.
+        if rss_result != None:
+            #If latest rss result does not equal saved result...
+            if rss_result[0] != (settings[1]['latest-name'][rss_id]):
 
-                    #Download the torrent and save it to location under the name of
-                    #it's rss id.
-                    torrent = download_torrent(rss_result[0], settings[0]['settings']['location'], rss_id)
+                #Download the torrent and save it to location under the name of
+                #it's rss id.
+                torrent = download_torrent(rss_result[0], settings[0]['settings']['location'], rss_id)
 
-                    #Check if the current iteration has SVP set to True or not.
-                    if settings[1]['svp'][rss_id] == 'True':
-                        #Interpolate
-                        svp(torrent[0], torrent[1], settings[0]['settings']['location'])
-                    else:
-                        #Convert the downloaded torrent to hardsubs.
-                        hardsub(torrent[0], torrent[1], settings[0]['settings']['location'])
-
-                    #The process is completed, save latest RSS link to settings_config.
-                    write_config(settings[0]['settings']['rss_config'], 'latest-name', rss_id, rss_result[0])
-
+                #Check if the current iteration has SVP set to True or not.
+                if settings[1]['svp'][rss_id] == 'True':
+                    #Interpolate
+                    svp(torrent[0], torrent[1], settings[0]['settings']['location'])
                 else:
-                    print(f'{rss_result[1]} is the latest release.')
-        #Wait 10 minutes
-        sleep(int(settings[0]['settings']['rss_sleep_time']))
-        #Redefine config so it can be checked again.
-        settings = import_settings(SETTINGS_PATH)
+                    #Convert the downloaded torrent to hardsubs.
+                    hardsub(torrent[0], torrent[1], settings[0]['settings']['location'])
+
+                #The process is completed, save latest RSS link to settings_config.
+                write_config(settings[0]['settings']['rss_config'], 'latest-name', rss_id, rss_result[0])
+
+            else:
+                print(f'{rss_result[1]} is the latest release.')
 
 if __name__ == "__main__":
-    global SETTINGS_PATH
     #Gather run arguments.
     try:
         SETTINGS_PATH = str(argv[1])
@@ -379,11 +360,15 @@ if __name__ == "__main__":
         logging.info('Default config path \'settings.ini\' in use.')
         SETTINGS_PATH = 'settings.ini'
 
-    #Load settings config.
-    settings = import_settings(SETTINGS_PATH)
-
-    #Run main function
-    try:
-        episode_parser(settings)
-    except KeyboardInterrupt:
-        logging.debug("Program terminated by user.")
+    #Main loop.
+    while True:
+        try:
+            #Load settings config.
+            settings = import_settings(SETTINGS_PATH)
+            #Run main function.
+            episode_parser()
+            #Wait 10 minutes.
+            sleep(settings[0]['settings']['rss_sleep_time'])
+        except KeyboardInterrupt:
+            logging.debug("Program terminated by user.")
+            exit()
