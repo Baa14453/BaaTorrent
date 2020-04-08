@@ -1,6 +1,7 @@
 from time import sleep
 from sys import argv, stdout, exit, stderr
-from os import path, remove, rename, linesep, X_OK, access
+from os import path, remove, rename, linesep, X_OK, access, listdir, stat
+from stat import S_ISDIR, S_ISREG
 from configparser import ConfigParser, RawConfigParser, DuplicateOptionError
 from feedparser import parse
 from subprocess import Popen, CalledProcessError, run
@@ -116,7 +117,6 @@ def import_settings(settings_file_name):
                     logging.warn('Cannot find \'{}\' library: \'{}\'; does not exist, interpolation will fail.'.format(file, settings['settings'][file]))
 
     library_checker(LIBRARIES)
-    #Return settings.
     return settings
 
 def import_rss(rss_file_path):
@@ -248,29 +248,28 @@ def download_torrent(torrent_source, save_location, output_file_name):
     #TODO test files with more than one . in the name
     output_file_name += str(path.splitext(str(
                         torrent_in_progress.name()))[1])
-
-    rename(f'{save_location}/{torrent_in_progress.name()}', f'{save_location}/{output_file_name}')
     logging.info(f'{torrent_in_progress.name()} - Download complete.')
 
-    #return output_file_name, torrent_in_progress.name()
-    return f'{save_location}/{output_file_name}', f'{torrent_in_progress.name()}'
+    output_file_path = f'{save_location}/{torrent_in_progress.name()}'
+    #Return full path to the downloaded file/directory and the name of the torrent.
+    return output_file_path, f'{torrent_in_progress.name()}'
 
 #Interpolate the video to 60FPS and apply hardsubs
-def svp(temp_file_path, true_file_path, location):
+def svp(file_path, true_file_path, location):
     logging.info('Starting  interpolation:')
     #Split file name
-    true_file_path = path.splitext(str(true_file_path))
-    final_file_path = location + '/' + true_file_path[0] + 'svp' + true_file_path[1]
+    split_file_path = path.splitext(file_path)
+    final_file_path = split_file_path[0] + 'svp' + split_file_path[1]
     gpu = settings['settings']['gpu']
     ffms2 = settings['settings']['ffms2']
     svpflow1 = settings['settings']['svpflow1']
     svpflow2 = settings['settings']['svpflow2']
     ffmpeg_binary = settings['settings']['ffmpeg_location']
 
-    vspipe_cmd = ['vspipe', 'svp.py', '-a', f'file={temp_file_path}', '-a', f'gpu={gpu}', '-a', f'ffms2={ffms2}', '-a', f'svpflow1={svpflow1}', '-a', f'svpflow2={svpflow2}', '-', '--y4m']
+    vspipe_cmd = ['vspipe', 'svp.py', '-a', f'file={file_path}', '-a', f'gpu={gpu}', '-a', f'ffms2={ffms2}', '-a', f'svpflow1={svpflow1}', '-a', f'svpflow2={svpflow2}', '-', '--y4m']
 
-    ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{temp_file_path}', '-acodec', 'copy', \
-           '-filter_complex', f'subtitles=\'{temp_file_path}\'', \
+    ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{file_path}', '-acodec', 'copy', \
+           '-filter_complex', f'subtitles=\'{file_path}\'', \
            f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
 
     #Start a process, assign it to vspipe.
@@ -286,14 +285,17 @@ def svp(temp_file_path, true_file_path, location):
     ffmpeg.stderr.close()
     return_code = ffmpeg.wait()
     if return_code:
-        logging.debug(ffmpeg.stderr)
+        logging.debug("FFMPEG err: " + str(ffmpeg.stderr))
+        logging.debug("Input file: " + file_path)
+        logging.debug("VSPipe cmd: " + str(vspipe_cmd))
+        logging.debug("FFMPEG cmd: " + str(ffmpeg_cmd))
         raise CalledProcessError(return_code, ffmpeg_cmd)
 
     logging.info(f'Interpolation complete.')
-    logging.debug(f'Removing file {temp_file_path}.')
-    remove(temp_file_path)
-    logging.debug(f'Removing file {temp_file_path}.ffindex.')
-    remove(temp_file_path + '.ffindex')
+    logging.debug(f'Removing file {file_path}.')
+    remove(file_path)
+    logging.debug(f'Removing file {file_path}.ffindex.')
+    remove(file_path + '.ffindex')
 
     return final_file_path
 
@@ -329,6 +331,31 @@ def hardsub(temp_file_path, true_file_path, location):
 
     return final_file_path
 
+def videosearch(root):
+    "Search directory structure for supported video files."
+    supported_formats = ".mp4", ".avi", ".mkv"
+    file_list = []
+    #Use OS.STAT to get file permissions.
+    mode = stat(root).st_mode
+    #Use STAT.S_ISDIR to check if file permissions are from a directory.
+    if (S_ISDIR(mode)):
+        #It's a directory, recurse into it.
+        logging.debug(f'Entering Directory: {root}')
+        for found_file in listdir(root):
+            for returned_file in videosearch(root + '/' + found_file):
+                file_list.append(returned_file)
+    elif S_ISREG(mode):
+        #It's a file, check it's a supported format.
+        for format in supported_formats:
+            if root.endswith(format):
+                logging.debug(f'Adding file to processing list: {root}')
+                file_list.append(root)
+    else:
+        #Unknown file type, print a message
+        logging.debug(f'Skipping {root}')
+
+    return file_list
+
 #Main function
 def episode_parser():
 
@@ -347,8 +374,10 @@ def episode_parser():
 
                 #Check if the current iteration has SVP set to True or not.
                 if rss['svp'][rss_id] == 'True':
-                    #Interpolate
-                    svp(torrent[0], torrent[1], settings['settings']['location'])
+                    #Find all videos
+                    file_list = videosearch(torrent[0])
+                    for file in file_list:
+                        svp(file, torrent[1], settings['settings']['location'])
                 else:
                     #Convert the downloaded torrent to hardsubs.
                     hardsub(torrent[0], torrent[1], settings['settings']['location'])
