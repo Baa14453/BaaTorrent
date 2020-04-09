@@ -1,8 +1,17 @@
-[rss-feeds]
+[rss_feeds]
 1 =
 
+[video_mode]
+1 = SVP
+2 = hardsub
+3 = SVP+hardsub
+4 = none
+
+[rss_mode]
+1 = latest
+2 = all
+3 = first
+
+#Don't touch
 [latest-name]
 1 =
-
-[svp]
-1 = False

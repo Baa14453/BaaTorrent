@@ -136,8 +136,8 @@ def import_rss(rss_file_path):
 
     #Test rss config.
     try:
-        #Check for the first value in 'rss-feeds'.
-        list(rss['rss-feeds'])[0]
+        #Check for the first value in 'rss_feeds'.
+        list(rss['rss_feeds'])[0]
     except KeyError as Argument:
         logging.error(f'While parsing config header {Argument}.')
         logging.debug('',exc_info=1)
@@ -149,7 +149,7 @@ def import_rss(rss_file_path):
 
     #Check all keys in config are present.
     try:
-        for key in rss['rss-feeds']:
+        for key in rss['rss_feeds']:
             for header in rss:
                 #Ignore DEFAULT header.
                 if header != 'DEFAULT':
@@ -191,10 +191,13 @@ def download_file(url):
     return file_name
 
 #Processes an RSS feed, returns the link and title attributes.
-def feed_parser(rss_feed):
+def feed_parser(rss_feed, rss_mode):
     rss_result = parse(rss_feed)
     try:
-        return(rss_result.entries[0].link, rss_result.entries[0].title)
+        if rss_mode == "latest":
+            return(rss_result.entries[0].link, rss_result.entries[0].title)
+        elif rss_mode == "first":
+            return(rss_result.entries[-1].link, rss_result.entries[-1].title)
 
     #Catches empty RSS feeds.
     except IndexError as e:
@@ -255,27 +258,59 @@ def download_torrent(torrent_source, save_location, output_file_name):
     return output_file_path, f'{torrent_in_progress.name()}'
 
 #Interpolate the video to 60FPS and apply hardsubs
-def svp(file_path, true_file_path, location):
-    logging.info('Starting  interpolation:')
+def process_video(file_path, video_mode, location):
     #Split file name
-    split_file_path = path.splitext(file_path)
-    final_file_path = split_file_path[0] + 'svp' + split_file_path[1]
+    #TODO what does this split on? check dots in filenames.
+    final_file_path = path.splitext(file_path)
+    final_file_path = final_file_path[0] + f'[{video_mode}]' + final_file_path[1]
+
+    #Import config settings.
     gpu = settings['settings']['gpu']
     ffms2 = settings['settings']['ffms2']
     svpflow1 = settings['settings']['svpflow1']
     svpflow2 = settings['settings']['svpflow2']
     ffmpeg_binary = settings['settings']['ffmpeg_location']
 
-    vspipe_cmd = ['vspipe', 'svp.py', '-a', f'file={file_path}', '-a', f'gpu={gpu}', '-a', f'ffms2={ffms2}', '-a', f'svpflow1={svpflow1}', '-a', f'svpflow2={svpflow2}', '-', '--y4m']
+    #Interpolate to 60FPS and apply hardsubs.
+    if video_mode == "SVP+hardsub":
+        logging.info(f'Starting interpolation and hardsub of: {file_path}')
+        vspipe_cmd = ['vspipe', 'svp.py', '-a', f'file={file_path}', '-a', f'gpu={gpu}', '-a', f'ffms2={ffms2}', '-a', f'svpflow1={svpflow1}', '-a', f'svpflow2={svpflow2}', '-', '--y4m']
 
-    ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{file_path}', '-acodec', 'copy', \
-           '-filter_complex', f'subtitles=\'{file_path}\'', \
-           f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
+        ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{file_path}', '-acodec', 'copy', \
+               '-filter_complex', f'subtitles=\'{file_path}\'', \
+               f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
 
-    #Start a process, assign it to vspipe.
-    vspipe = Popen(vspipe_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-    #Start a process, assign it to ffmpeg.
-    ffmpeg = Popen(ffmpeg_cmd, stdin=vspipe.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+        #Start a process, assign it to vspipe.
+        vspipe = Popen(vspipe_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        #Start a process, assign it to ffmpeg.
+        ffmpeg = Popen(ffmpeg_cmd, stdin=vspipe.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+    #Interpolate to 60FPS only.
+    elif video_mode == "SVP":
+        logging.info(f'Starting interpolation of: {file_path}')
+        vspipe_cmd = ['vspipe', 'svp.py', '-a', f'file={file_path}', '-a', f'gpu={gpu}', '-a', f'ffms2={ffms2}', '-a', f'svpflow1={svpflow1}', '-a', f'svpflow2={svpflow2}', '-', '--y4m']
+
+        ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{file_path}', '-acodec', 'copy', \
+               f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
+
+        #Start a process, assign it to vspipe.
+        vspipe = Popen(vspipe_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        #Start a process, assign it to ffmpeg.
+        ffmpeg = Popen(ffmpeg_cmd, stdin=vspipe.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+    #Apply hardsubs only.
+    elif video_mode == "hardsubs":
+        logging.info(f'Starting hardsub of: {file_path}')
+        ffmpeg_cmd = [ffmpeg_binary, '-i', f'{file_path}', '-c:a', 'copy', \
+               f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
+
+        #Start a process, assign it to ffmpeg.
+        ffmpeg = Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
+
+    #Do not process
+    else:
+        logging.info(f'Not processing video: {file_path}')
+        return file_path
 
     #For each line of stderr (ffmpeg outputs to stderr for some reason).
     for stderr_line in ffmpeg.stderr:
@@ -287,47 +322,17 @@ def svp(file_path, true_file_path, location):
     if return_code:
         logging.debug("FFMPEG err: " + str(ffmpeg.stderr))
         logging.debug("Input file: " + file_path)
-        logging.debug("VSPipe cmd: " + str(vspipe_cmd))
+        if mode == "SVP" or mode == "SVP+hardsubs":
+            logging.debug("VSPipe cmd: " + str(vspipe_cmd))
         logging.debug("FFMPEG cmd: " + str(ffmpeg_cmd))
         raise CalledProcessError(return_code, ffmpeg_cmd)
 
-    logging.info(f'Interpolation complete.')
+    logging.info(f'Completed video processing of: {file_path}')
     logging.debug(f'Removing file {file_path}.')
     remove(file_path)
-    logging.debug(f'Removing file {file_path}.ffindex.')
-    remove(file_path + '.ffindex')
-
-    return final_file_path
-
-#Re-encode the video to apply hardsubs
-def hardsub(temp_file_path, true_file_path, location):
-    #Split file name
-    true_file_path = path.splitext(true_file_path)
-    final_file_path = location + '/' + true_file_path[0] + 'hardsubs' + true_file_path[1]
-    ffmpeg_binary = settings['settings']['ffmpeg_location']
-
-    cmd = [ffmpeg_binary, '-i', f'{temp_file_path}', \
-           '-filter_complex', f'subtitles=\'{temp_file_path}\'', \
-           f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
-
-    logging.info('Applying hardsubs:')
-    #Start a process, assign it to ffmpeg.
-    ffmpeg = Popen(cmd, universal_newlines=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    #For each line of stderr (ffmpeg outputs to stderr for some reason).
-    for stderr_line in ffmpeg.stderr:
-        #Log only the last line.
-        logging.info(stderr_line[:-1])
-    #idk looks important though.
-    ffmpeg.stderr.close()
-    return_code = ffmpeg.wait()
-    if return_code:
-        raise CalledProcessError(return_code, cmd)
-
-    logging.info('Hardsub rendering complete.')
-
-    logging.debug(f'Removing file {temp_file_path}.')
-    remove(temp_file_path)
+    if mode == "SVP" or mode == "SVP+hardsubs":
+        logging.debug(f'Removing file {file_path}.ffindex.')
+        remove(file_path + '.ffindex')
 
     return final_file_path
 
@@ -359,9 +364,9 @@ def videosearch(root):
 #Main function
 def episode_parser():
 
-    for rss_id in rss['rss-feeds']:
+    for rss_id in rss['rss_feeds']:
         #Process the RSS feed and retrieve the URL of the latest result.
-        rss_result = feed_parser(rss['rss-feeds'][rss_id])
+        rss_result = feed_parser(rss['rss_feeds'][rss_id], rss['rss_mode'][rss_id])
 
         #Don't break if it's blank.
         if rss_result != None:
@@ -372,15 +377,10 @@ def episode_parser():
                 #it's rss id.
                 torrent = download_torrent(rss_result[0], settings['settings']['location'], rss_id)
 
-                #Check if the current iteration has SVP set to True or not.
-                if rss['svp'][rss_id] == 'True':
-                    #Find all videos
-                    file_list = videosearch(torrent[0])
-                    for file in file_list:
-                        svp(file, torrent[1], settings['settings']['location'])
-                else:
-                    #Convert the downloaded torrent to hardsubs.
-                    hardsub(torrent[0], torrent[1], settings['settings']['location'])
+                #Find all videos
+                file_list = videosearch(torrent[0])
+                for file in file_list:
+                    process_video(file, rss['rss_mode'][rss_id], settings['settings']['location'])
 
                 #The process is completed, save latest RSS link to settings_config.
                 write_config(settings['settings']['rss_config'], 'latest-name', rss_id, rss_result[0])
