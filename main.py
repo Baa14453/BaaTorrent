@@ -6,6 +6,7 @@ from configparser import ConfigParser, RawConfigParser, DuplicateOptionError
 from feedparser import parse
 from subprocess import Popen, CalledProcessError, run
 from shutil import which
+from ast import literal_eval
 import subprocess
 import urllib.request
 import libtorrent
@@ -23,7 +24,7 @@ def import_settings(settings_file_name):
         logging.debug('',exc_info=1)
         exit()
     except IOError:
-        logging.error('Settings file \'{}\' could not be accessed.'.format(config_file_name))
+        logging.error('Settings file \'{}\' could not be accessed.'.format(settings_file_name))
         logging.debug('',exc_info=1)
         exit()
 
@@ -80,7 +81,6 @@ def import_settings(settings_file_name):
         if which(settings['settings']['ffmpeg_location']) != None:
             settings['settings']['ffmpeg_location'] = which(settings['settings']['ffmpeg_location'])
     except IndexError:
-        location = f'{path.abspath(path.dirname(str(argv[0])))}'
         settings['settings']['location'] = path.abspath(path.dirname(str(argv[0])))
         logging.info('Default save location \'{}\' in use.'.format(settings['settings']['location']))
         logging.debug('',exc_info=1)
@@ -151,11 +151,13 @@ def import_rss(rss_file_path):
     try:
         for key in rss['rss_feeds']:
             for header in rss:
+                logging.debug(header)
                 #Ignore DEFAULT header.
                 if header != 'DEFAULT':
                     logging.debug('Checking config \'{}\' key \'{}\' in header \'{}\'.'.format(rss_file_path, key, header))
                     rss[header][key]
                     logging.debug('\'{}\' \'{}\' \'{}\' is OK.'.format(rss_file_path, header, key))
+
     except KeyError as Argument:
         logging.debug(f'Missing key for \'{header}\', attempting to fix.')
         logging.debug('',exc_info=1)
@@ -168,6 +170,7 @@ def import_rss(rss_file_path):
             logging.error(f'While trying to fix key \'{key}\' for header \'{header}\'.')
             logging.debug('',exc_info=1)
             exit()
+
     return rss
 
 #Used for saving details of last RSS feed used and repairing config.
@@ -195,9 +198,18 @@ def feed_parser(rss_feed, rss_mode):
     rss_result = parse(rss_feed)
     try:
         if rss_mode == "latest":
-            return(rss_result.entries[0].link, rss_result.entries[0].title)
+            return([[rss_result.entries[0].link, rss_result.entries[0].title]])
         elif rss_mode == "first":
-            return(rss_result.entries[-1].link, rss_result.entries[-1].title)
+            return([[rss_result.entries[-1].link, rss_result.entries[-1].title]])
+        elif rss_mode == "all":
+            entries = []
+            for entry in rss_result.entries:
+                entries.append([entry.link, entry.title])
+                logging.debug(str(entries))
+            return entries
+        else:
+            logging.error(f'Chosen RSS Mode \'{rss_mode}\' is not valid.')
+            exit()
 
     #Catches empty RSS feeds.
     except IndexError as e:
@@ -237,16 +249,19 @@ def download_torrent(torrent_source, save_location, output_file_name):
 
     logging.info(f'Starting download: {torrent_in_progress.name()}.')
 
+    #While loop of torrent downloading.
     while (not torrent_in_progress.is_seed()):
         status = torrent_in_progress.status()
 
-        sleep(1)
+        #Print download status every second.
         logging.info('{:.2f}% complete. (Speed: {:.1f} kB/s)'.format(status.progress * 100, status.download_rate / 1000))
 
         alerts = session.pop_alerts()
         for a in alerts:
             if a.category() & libtorrent.alert.category_t.error_notification:
                 logging.error(f'{str(a)}')
+
+        sleep(1)
 
     #TODO test files with more than one . in the name
     output_file_name += str(path.splitext(str(
@@ -322,7 +337,7 @@ def process_video(file_path, video_mode, location):
     if return_code:
         logging.debug("FFMPEG err: " + str(ffmpeg.stderr))
         logging.debug("Input file: " + file_path)
-        if mode == "SVP" or mode == "SVP+hardsubs":
+        if video_mode == "SVP" or video_mode == "SVP+hardsubs":
             logging.debug("VSPipe cmd: " + str(vspipe_cmd))
         logging.debug("FFMPEG cmd: " + str(ffmpeg_cmd))
         raise CalledProcessError(return_code, ffmpeg_cmd)
@@ -330,7 +345,7 @@ def process_video(file_path, video_mode, location):
     logging.info(f'Completed video processing of: {file_path}')
     logging.debug(f'Removing file {file_path}.')
     remove(file_path)
-    if mode == "SVP" or mode == "SVP+hardsubs":
+    if video_mode == "SVP" or video_mode == "SVP+hardsubs":
         logging.debug(f'Removing file {file_path}.ffindex.')
         remove(file_path + '.ffindex')
 
@@ -365,28 +380,43 @@ def videosearch(root):
 def episode_parser():
 
     for rss_id in rss['rss_feeds']:
-        #Process the RSS feed and retrieve the URL of the latest result.
-        rss_result = feed_parser(rss['rss_feeds'][rss_id], rss['rss_mode'][rss_id])
+        #Process the RSS feed and retrieve the URL required (based on rss_mode).
+        rss_results = feed_parser(rss['rss_feeds'][rss_id], rss['rss_mode'][rss_id])
+        logging.debug(rss_results)
+        for rss_result in rss_results:
+            #Don't break if it's blank.
+            if rss_result != None:
+                #If latest rss result does not equal saved result...
+                if rss_result[0] not in (rss['latest-name'][rss_id]):
 
-        #Don't break if it's blank.
-        if rss_result != None:
-            #If latest rss result does not equal saved result...
-            if rss_result[0] != (rss['latest-name'][rss_id]):
+                    #Download the torrent and save it to location under the name of
+                    #it's rss id.
+                    torrent = download_torrent(rss_result[0], settings['settings']['location'], rss_id)
 
-                #Download the torrent and save it to location under the name of
-                #it's rss id.
-                torrent = download_torrent(rss_result[0], settings['settings']['location'], rss_id)
+                    #Find all videos
+                    file_list = videosearch(torrent[0])
+                    for file in file_list:
+                        process_video(file, rss['rss_mode'][rss_id], settings['settings']['location'])
 
-                #Find all videos
-                file_list = videosearch(torrent[0])
-                for file in file_list:
-                    process_video(file, rss['rss_mode'][rss_id], settings['settings']['location'])
+                    if rss['latest-name'][rss_id] == '':
+                        #Value is blank so just write.
+                        logging.debug(f'Value is blank writing \'{rss_result[0]}\'.')
+                        write_config(settings['settings']['rss_config'], 'latest-name', rss_id, [str(rss_result[0])])
+                    else:
+                        #Value is not blank so check if the entry already exists.
+                        logging.debug("Value is not blank so check if the entry already exists.")
+                        latest_name = literal_eval(rss['latest-name'][rss_id])
+                        if rss_result[0] not in latest_name:
+                            logging.debug("Everything checks out, write the value.")
+                            rss['latest-name'][rss_id] = str(latest_name + [rss_result[0]])
+                            write_config(settings['settings']['rss_config'], 'latest-name', rss_id, rss['latest-name'][rss_id])
+                        else:
+                            logging.debug("Value already exists in config.")
+                            return
 
-                #The process is completed, save latest RSS link to settings_config.
-                write_config(settings['settings']['rss_config'], 'latest-name', rss_id, rss_result[0])
-
-            else:
-                logging.info(f'{rss_result[1]} is the latest release.')
+                else:
+                    logging.debug(rss_result)
+                    logging.info(f'{rss_result[1]} is the latest release.')
 
 if __name__ == "__main__":
     #Gather run arguments.
