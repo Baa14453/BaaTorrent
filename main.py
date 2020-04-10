@@ -396,7 +396,7 @@ def episode_parser():
                     #Find all videos
                     file_list = videosearch(torrent[0])
                     for file in file_list:
-                        process_video(file, rss['rss_mode'][rss_id], settings['settings']['location'])
+                        process_video(file, rss['video_mode'][rss_id], settings['settings']['location'])
 
                     if rss['latest-name'][rss_id] == '':
                         #Value is blank so just write.
