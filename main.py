@@ -345,7 +345,7 @@ def process_video(file_path, video_mode, location):
     logging.info(f'Completed video processing of: {file_path}')
     logging.debug(f'Removing file {file_path}.')
     remove(file_path)
-    if video_mode == "SVP" or video_mode == "SVP+hardsubs":
+    if video_mode == "SVP" or video_mode == "SVP+hardsub":
         logging.debug(f'Removing file {file_path}.ffindex.')
         remove(file_path + '.ffindex')
 
