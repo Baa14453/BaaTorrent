@@ -386,7 +386,7 @@ def episode_parser():
         for rss_result in rss_results:
             #Don't break if it's blank.
             if rss_result != None:
-                #If latest rss result does not equal saved result...
+                #If this rss result does not equal any of the saved results..
                 if rss_result[0] not in (rss['latest-name'][rss_id]):
 
                     #Download the torrent and save it to location under the name of
@@ -400,15 +400,17 @@ def episode_parser():
 
                     if rss['latest-name'][rss_id] == '':
                         #Value is blank so just write.
-                        logging.debug(f'Value is blank writing \'{rss_result[0]}\'.')
-                        write_config(settings['settings']['rss_config'], 'latest-name', rss_id, [str(rss_result[0])])
+                        logging.debug(f'Latest-name is blank, writing: \'{rss_result[0]}\'.')
+                        write_config(settings['settings']['rss_config'], 'latest-name', rss_id, str([rss_result[0]]))
+                        rss['latest-name'][rss_id] = str([rss_result[0]])
                     else:
                         #Value is not blank so check if the entry already exists.
-                        logging.debug("Value is not blank so check if the entry already exists.")
+                        logging.debug("Latest-name is not blank, checking if \'{rss_result[0]}\' already exists.")
                         latest_name = literal_eval(rss['latest-name'][rss_id])
                         if rss_result[0] not in latest_name:
-                            logging.debug("Everything checks out, write the value.")
+                            logging.debug(f'Everything checks out, writing: \'{rss_result[0]}\'')
                             rss['latest-name'][rss_id] = str(latest_name + [rss_result[0]])
+                            logging.debug(rss['latest-name'][rss_id])
                             write_config(settings['settings']['rss_config'], 'latest-name', rss_id, rss['latest-name'][rss_id])
                         else:
                             logging.debug("Value already exists in config.")
