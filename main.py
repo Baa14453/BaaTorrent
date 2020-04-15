@@ -405,7 +405,7 @@ def episode_parser():
                         rss['latest-name'][rss_id] = str([rss_result[0]])
                     else:
                         #Value is not blank so check if the entry already exists.
-                        logging.debug("Latest-name is not blank, checking if \'{rss_result[0]}\' already exists.")
+                        logging.debug(f'Latest-name is not blank, checking if \'{rss_result[0]}\' already exists.')
                         latest_name = literal_eval(rss['latest-name'][rss_id])
                         if rss_result[0] not in latest_name:
                             logging.debug(f'Everything checks out, writing: \'{rss_result[0]}\'')
@@ -444,5 +444,5 @@ if __name__ == "__main__":
             #Wait 10 minutes.
             sleep(int(settings['settings']['rss_sleep_time']))
         except KeyboardInterrupt:
-            logging.debug("Program terminated by user.")
+            logging.debug("🦀 Program terminated by user. 🦀")
             exit()
