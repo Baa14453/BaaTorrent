@@ -291,9 +291,9 @@ def process_video(file_path, video_mode, location):
         logging.info(f'Starting interpolation and hardsub of: {file_path}')
         vspipe_cmd = ['vspipe', 'svp.py', '-a', f'file={file_path}', '-a', f'gpu={gpu}', '-a', f'ffms2={ffms2}', '-a', f'svpflow1={svpflow1}', '-a', f'svpflow2={svpflow2}', '-', '--y4m']
 
-        ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{file_path}', '-acodec', 'copy', \
-               '-filter_complex', f'subtitles=\'{file_path}\'', \
-               f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
+        ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{file_path}', '-map:s', '1', '-acodec', 'copy', \
+                '-filter_complex', f'subtitles=\'{file_path}\'', \
+                f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
 
         #Start a process, assign it to vspipe.
         vspipe = Popen(vspipe_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -305,8 +305,8 @@ def process_video(file_path, video_mode, location):
         logging.info(f'Starting interpolation of: {file_path}')
         vspipe_cmd = ['vspipe', 'svp.py', '-a', f'file={file_path}', '-a', f'gpu={gpu}', '-a', f'ffms2={ffms2}', '-a', f'svpflow1={svpflow1}', '-a', f'svpflow2={svpflow2}', '-', '--y4m']
 
-        ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{file_path}', '-acodec', 'copy', \
-               f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
+        ffmpeg_cmd = [ffmpeg_binary, '-i', '-', '-i', f'{file_path}', '-map:s', '1', '-acodec', 'copy', \
+                f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
 
         #Start a process, assign it to vspipe.
         vspipe = Popen(vspipe_cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
@@ -314,10 +314,11 @@ def process_video(file_path, video_mode, location):
         ffmpeg = Popen(ffmpeg_cmd, stdin=vspipe.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
 
     #Apply hardsubs only.
-    elif video_mode == "hardsubs":
+    elif video_mode == "hardsub":
         logging.info(f'Starting hardsub of: {file_path}')
-        ffmpeg_cmd = [ffmpeg_binary, '-i', f'{file_path}', '-c:a', 'copy', \
-               f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
+        ffmpeg_cmd = [ffmpeg_binary, '-i', f'{file_path}', '-map:s', '0', '-c:a', 'copy', \
+                '-filter_complex', f'subtitles=\'{file_path}\'', \
+                f'{final_file_path}', '-y', '-loglevel', 'warning', '-stats']
 
         #Start a process, assign it to ffmpeg.
         ffmpeg = Popen(ffmpeg_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True)
