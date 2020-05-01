@@ -109,12 +109,12 @@ def import_settings(settings_file_name):
                     #Is it executable?
                     if access(settings['settings'][file], X_OK):
                         #It is... something else is wrong.
-                        logging.warn('\'{}\' library \'{}\' exists and is executable, unknown issue. Interpolation will fail.'.format(file, settings['settings'][file]))
+                        logging.warning('\'{}\' library \'{}\' exists and is executable, unknown issue. Interpolation will fail.'.format(file, settings['settings'][file]))
                     else:
                         #It isn't, it will fail.
-                        logging.warn('\'{}\' library \'{}\' exists but is not executable, interpolation will fail.'.format(file, settings['settings'][file]))
+                        logging.warning('\'{}\' library \'{}\' exists but is not executable, interpolation will fail.'.format(file, settings['settings'][file]))
                 else:
-                    logging.warn('Cannot find \'{}\' library: \'{}\'; does not exist, interpolation will fail.'.format(file, settings['settings'][file]))
+                    logging.warning('Cannot find \'{}\' library: \'{}\'; does not exist, interpolation will fail.'.format(file, settings['settings'][file]))
 
     library_checker(LIBRARIES)
     return settings
@@ -196,6 +196,9 @@ def download_file(url):
 #Processes an RSS feed, returns the link and title attributes.
 def feed_parser(rss_feed, rss_mode):
     rss_result = parse(rss_feed)
+    if not str(rss_result.status).startswith("2"):
+        logging.warning(f'RSS Feed \'{rss_feed}\' returned invalid HTTP status {rss_result.status}.')
+        return []
     try:
         if rss_mode == "latest":
             return([[rss_result.entries[0].link, rss_result.entries[0].title]])
@@ -213,9 +216,8 @@ def feed_parser(rss_feed, rss_mode):
 
     #Catches empty RSS feeds.
     except IndexError as e:
-        logging.warn(f'\'{rss_feed}\' has no entries or is not an RSS feed.')
-        #TODO test just not returning anything.
-        return
+        logging.warning(f'\'{rss_feed}\' has no entries or is not an RSS feed.')
+        return []
 
     #Not sure what will trigger this now, maybe broken rss feed?
     except Exception as e:
